@@ -73,6 +73,9 @@
   <script type="text/javascript" src="../build/pdf.js"></script>
   <!--<script type="text/javascript" src="../build/pdf.worker.js"></script>-->
   <script>
+    var INVOICE_TYPE_026 = "026";
+    var INVOICE_TYPE_031 = "031";
+
     document.getElementById("pdfViewer").style.height =
       document.documentElement.clientHeight + "px";
 
@@ -82,6 +85,57 @@
     var selectFile = document.getElementById("selectFile");
     function upLoadClicked() {
       this.document.getElementById("selectFile").click();
+    }
+
+    /**
+     * 读取全电发票
+     */
+    function readAllEGeneral(arr) {
+      var invoiceType = "";
+      var invoiceNo = "";
+      var buyerCode = "";
+      var buyerName = "";
+      var sellerCode = "";
+      var sellerName = "";
+      var date = "";
+      var amount = "";
+      var invoiceDetail = "";
+
+      arr.forEach((item, index) => {
+        const x = item.transform[4];
+        const y = item.transform[5];
+        if (index === 0) {
+          invoiceType = item.str;
+        } else if (/^\d{4}年\d{2}月\d{2}日$/.test(item.str)) {
+          date = item.str;
+        } else if (y === 357.05 && /^\d{20}$/.test(item.str)) {
+          invoiceNo = item.str;
+        } else if (item.str.startsWith("*")) {
+          invoiceDetail = item.str;
+        } else if (x === 439.37 && y === 110) {
+          amount = item.str.replace(/[^0-9.]/g, "");
+        } else if (x === 151.65 && y === 262.79) {
+          buyerCode = item.str;
+        } else if (x === 56.69 && y === 293.3) {
+          buyerName = item.str;
+        } else if (x === 436.54 && y === 262.79) {
+          sellerCode = item.str;
+        } else if (x === 340.16 && y === 293.3) {
+          sellerName = item.str;
+        }
+      })
+
+      return {
+        invoiceType,
+        invoiceNo,
+        date,
+        amount,
+        invoiceDetail,
+        buyerCode,
+        buyerName,
+        sellerCode,
+        sellerName
+      }
     }
 
     function fileChange() {
@@ -138,6 +192,13 @@
 
             page.getTextContent().then(function (textContent) {
               console.info(textContent.items);
+
+              if (textContent.items.some(v => v.str === '电子发票（普通发票）')) {
+                const result = readAllEGeneral(textContent.items)
+                console.log('全电普票', result)
+                return
+              }
+
               textContent.items.forEach((element) => {
                 if (
                   element.transform[4] / pageWidth > 470.57 / 610 &&
