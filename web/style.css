@@ -8,7 +8,7 @@ body {
   font-size: 60px;
 }
 #mainDiv {
-  width: 30%;
+  /* width: 30%; */
   height: 300px;
 
   float: left;

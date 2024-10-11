@@ -12,7 +12,7 @@
     <title>测试获取pdf信息</title>
   </head>
   <body>
-    <div id="top">南方国际发票上报工具</div>
+    <!-- <div id="top">南方国际发票上报工具</div> -->
     <div id="mainDiv">
       <input
         type="button"
@@ -26,12 +26,15 @@
         type="file"
         value=""
         onchange="fileChange()"
+        multiple
       />
 
       <div id="content">
-        <div>请查看下述文字是否正确修改后上报</div>
+        <div>请人工校验并核对输出内容</div>
 
-        <div class="infoBox">
+        <pre id="jsonPreview" style="font-size: 12px; white-space: pre-wrap;"></pre>
+
+        <!-- <div class="infoBox">
           <div>发票总金额</div>
           <div><textarea type="text" id="price" value="无"></textarea></div>
         </div>
@@ -62,11 +65,11 @@
         <div class="infoBox">
           <div>开票时间</div>
           <div><textarea type="text" id="date" value="无"></textarea></div>
-        </div>
+        </div> -->
       </div>
     </div>
 
-    <iframe id="pdfViewer"></iframe>
+    <!-- <iframe id="pdfViewer"></iframe> -->
   </body>
   <script type="text/javascript" src="./js/Tool.js"></script>
   <script type="text/javascript" src="./js/nzh.cn.min.js"></script>
@@ -76,8 +79,8 @@
     var INVOICE_TYPE_026 = "026";
     var INVOICE_TYPE_031 = "031";
 
-    document.getElementById("pdfViewer").style.height =
-      document.documentElement.clientHeight + "px";
+    /* document.getElementById("pdfViewer").style.height =
+      document.documentElement.clientHeight + "px"; */
 
     pdfjsLib.workerSrc = "../build/pdf.worker.js";
     //pdfjsLib.cMapUrl = 'cmaps/';
@@ -90,58 +93,132 @@
     /**
      * 读取全电发票
      */
-    function readAllEGeneral(arr) {
-      var invoiceType = "";
-      var invoiceNo = "";
-      var buyerCode = "";
-      var buyerName = "";
-      var sellerCode = "";
-      var sellerName = "";
-      var date = "";
-      var amount = "";
-      var invoiceDetail = "";
+    function readAllEGeneral(pdfInfo) {
+      const { pageWidth, pageHeight } = pdfInfo;
 
-      arr.forEach((item, index) => {
-        const x = item.transform[4];
-        const y = item.transform[5];
+      const WIDTH = 595.276;
+      const HEIGHT = 396.85;
+
+      let invoiceType = "";
+      let invoiceNo = "";
+      let buyerCode = "";
+      let buyerName = "";
+      let sellerCode = "";
+      let sellerName = "";
+      let date = "";
+      let amount = "";
+      let invoiceDetail = "";
+
+      pdfInfo.items.forEach((item, index) => {
+        const x = (item.transform[4] / pageWidth) * WIDTH;
+        const y = (item.transform[5] / pageHeight) * HEIGHT;
+
+        console.log(x, y, item.str);
+
         if (index === 0) {
           invoiceType = item.str;
-        } else if (/^\d{4}年\d{2}月\d{2}日$/.test(item.str)) {
-          date = item.str;
-        } else if (y === 357.05 && /^\d{20}$/.test(item.str)) {
+        } else if (x > 480 && y > 339 && y < 341) {
+          date += item.str;
+        } else if (/^\d{20}$/.test(item.str) && y > 356 && y < 358) {
           invoiceNo = item.str;
-        } else if (item.str.startsWith("*")) {
-          invoiceDetail = item.str;
-        } else if (x === 439.37 && y === 110) {
-          amount = item.str.replace(/[^0-9.]/g, "");
-        } else if (x === 151.65 && y === 262.79) {
+        } else if (x > 12 && x < 80 && y > 228 && y < 230) {
+          invoiceDetail += item.str;
+        } else if (x > 438 && y > 109 && y < 111) {
+          amount += item.str;
+        } else if (x > 151 && x < 154 && y > 262 && y < 264) {
           buyerCode = item.str;
-        } else if (x === 56.69 && y === 293.3) {
+        } else if (x > 56 && x < 58 && y > 292 && y < 294) {
           buyerName = item.str;
-        } else if (x === 436.54 && y === 262.79) {
+        } else if (x > 436 && x < 439 && y > 262 && y < 264) {
           sellerCode = item.str;
-        } else if (x === 340.16 && y === 293.3) {
+        } else if (x > 339 && x < 341 && y > 292 && y < 294) {
           sellerName = item.str;
         }
-      })
+      });
 
       return {
         invoiceType,
         invoiceNo,
         date,
-        amount,
+        amount: amount.replace(/[^0-9.]/g, ""),
         invoiceDetail,
         buyerCode,
         buyerName,
         sellerCode,
-        sellerName
-      }
+        sellerName,
+      };
     }
 
-    function fileChange() {
-      console.log(selectFile.files[0].name);
+    function readFile(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (args) => {
+          resolve(args);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
 
-      let file = selectFile.files[0];
+    function getPDFInfo(readResult) {
+      const pdfbase = readResult.target.result;
+
+      const pdfData = atob(
+        pdfbase.substr(pdfbase.indexOf("base64,") + 7, pdfbase.length)
+      );
+
+      const pdfjsLibInstance = pdfjsLib.getDocument({
+        data: pdfData,
+        cMapUrl: "https://cdn.jsdelivr.net/npm/pdfjs-dist@2.2.228/cmaps/",
+        cMapPacked: true,
+      });
+
+      return new Promise((resolve, reject) => {
+        pdfjsLibInstance.promise.then((pdf) => {
+          pdf.getPage(1).then((page) => {
+            // 获取本页长宽
+            let pageWidth = page.getViewport().viewBox[2];
+            let pageHeight = page.getViewport().viewBox[3];
+            page.getTextContent().then((textContent) => {
+              resolve({
+                items: textContent.items,
+                pageWidth,
+                pageHeight,
+              });
+            });
+          });
+        });
+      });
+    }
+
+    async function fileChange() {
+      console.log("fileChange", selectFile.files);
+
+      // let file = selectFile.files[0];
+
+      const resultArr = [];
+
+      for (const fileItem of selectFile.files) {
+        let readResult = await readFile(fileItem);
+        let pdfInfo = await getPDFInfo(readResult);
+        let { items, pageWidth, pageHeight } = pdfInfo;
+        console.log("getPDFInfo pageWidth", pageWidth);
+        console.log("getPDFInfo pageHeight", pageHeight);
+        console.log("getPDFInfo items", items);
+        if (items.some((v) => v.str === "电子发票（普通发票）")) {
+          const invoiceInfo = {
+            ...readAllEGeneral(pdfInfo),
+            fileName: fileItem.name,
+          };
+          resultArr.push(invoiceInfo);
+        }
+      }
+
+      console.log("resultArr", resultArr);
+      document.getElementById("jsonPreview").innerText = JSON.stringify(resultArr, null, 2);
+
+      return;
+
       let fileRender = new FileReader();
       fileRender.readAsDataURL(file);
       fileRender.onload = function (aaa) {
@@ -193,10 +270,12 @@
             page.getTextContent().then(function (textContent) {
               console.info(textContent.items);
 
-              if (textContent.items.some(v => v.str === '电子发票（普通发票）')) {
-                const result = readAllEGeneral(textContent.items)
-                console.log('全电普票', result)
-                return
+              if (
+                textContent.items.some((v) => v.str === "电子发票（普通发票）")
+              ) {
+                const result = readAllEGeneral(textContent.items);
+                console.log("全电普票", result);
+                return;
               }
 
               textContent.items.forEach((element) => {
